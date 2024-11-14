@@ -1,3 +1,5 @@
+import time
+
 import agama
 import h5py
 import numpy as np
@@ -61,6 +63,8 @@ def get_kinematics(
         ly_lst = []
         lz_lst = []
 
+        start = time.time()
+        print("start", it)
         for gc, ptype in zip(gc_id_snap, ptype_snap):
             idx = np.where(part[ptype]["id"] == gc)[0][0]
             pos_xyz = part[ptype].prop(f"{host_name}.distance.principal", idx)
@@ -109,6 +113,9 @@ def get_kinematics(
 
             init_cond_lst.append(init_cond)
 
+        mid = time.time()
+        print("mid", it, mid - start)
+
         ioms = af(init_cond_lst)
         jr_lst = ioms[:, 0]
         jz_lst = ioms[:, 1]
@@ -148,6 +155,9 @@ def get_kinematics(
         }
 
         it_dict[it_id] = kin_dict
+
+        end = time.time()
+        print("end", it, end - start)
 
     data_dict[snap_id] = it_dict
 

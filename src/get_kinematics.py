@@ -12,22 +12,22 @@ from tools.gc_kinematics import get_kinematics
 def main(
     simulation: str,
     it_lst: list[int],
-    snap_lst: list[int],
-    # snapshot,
+    # snap_lst: list[int],
+    snapshot: int,
     sim_dir: str,
     data_dir: str,
     shared_dict: dict = {},
 ):
     fire_dir = sim_dir + simulation + "/" + simulation + "_res7100/"
 
-    for snapshot in snap_lst:
-        part = open_snapshot(snapshot, fire_dir)
-        print(snapshot)
-        get_kinematics(part, simulation, it_lst, snapshot, sim_dir, data_dir, shared_dict)
+    # for snapshot in snap_lst:
+    #     part = open_snapshot(snapshot, fire_dir)
+    #     print(snapshot)
+    #     get_kinematics(part, simulation, it_lst, snapshot, sim_dir, data_dir, shared_dict)
 
-    # part = open_snapshot(snapshot, fire_dir)
-    # print(snapshot)
-    # get_kinematics(part, simulation, it_lst, snapshot, sim_dir, data_dir, shared_dict)
+    part = open_snapshot(snapshot, fire_dir)
+    print(snapshot)
+    get_kinematics(part, simulation, it_lst, snapshot, sim_dir, data_dir, shared_dict)
 
 
 def add_kinematics_hdf5(simulation, it_lst: list[int], snap_lst: list[int], result_dict: dict, sim_dir: str):
@@ -51,7 +51,10 @@ def add_kinematics_hdf5(simulation, it_lst: list[int], snap_lst: list[int], resu
             else:
                 snapshot = snap_groups.create_group(snap_id)
             for key in result_dict[snap_id][it_id].keys():
-                snapshot.create_dataset(key, data=result_dict[snap_id][it_id][key])
+                if key in snapshot.keys():
+                    del snapshot[key]
+                else:
+                    snapshot.create_dataset(key, data=result_dict[snap_id][it_id][key])
 
     proc_data.close()
 
@@ -62,6 +65,15 @@ if __name__ == "__main__":
     parser.add_argument("-l", "--it_min", required=True, type=int, help="lower bound iteration")
     parser.add_argument("-u", "--it_max", required=True, type=int, help="upper bound iteration")
     parser.add_argument("-c", "--cores", required=False, type=int, help="number of cores to run process on")
+    parser.add_argument(
+        "-n",
+        "--snapshots",
+        required=False,
+        nargs="+",
+        type=int,
+        help="list of snapshots of interest, if None provided will default to all publicly available",
+    )
+
     args = parser.parse_args()
 
     it_min = args.it_min
@@ -77,19 +89,23 @@ if __name__ == "__main__":
     with open(potential_snaps) as json_file:
         pot_data = json.load(json_file)
 
-    snap_lst = np.array(pot_data[sim], dtype=int)
-    # snap_lst = snap_lst[:2]
+    snap_lst = args.snapshots
+    if snap_lst is None:
+        snap_lst = np.array(pot_data[sim], dtype=int)
 
     cores = args.cores
     if cores is None:
+        # 4 cores is max to run with 64 GB RAM
         cores = mp.cpu_count()
 
+    # look into this such that evenly sampled across time. as later snapshots are much faster
     snap_groups = np.array_split(snap_lst, cores)
     print(snap_groups)
 
     with mp.Manager() as manager:
         shared_dict = manager.dict()  # Shared dictionary across processes
-        args = [(sim, it_lst, snap_group, sim_dir, data_dir, shared_dict) for snap_group in snap_groups]
+        # args = [(sim, it_lst, snap_group, sim_dir, data_dir, shared_dict) for snap_group in snap_groups]
+        args = [(sim, it_lst, snap, sim_dir, data_dir, shared_dict) for snap in snap_lst]
 
         with mp.Pool(processes=cores, maxtasksperchild=1) as pool:
             pool.starmap(main, args, chunksize=1)

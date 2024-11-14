@@ -13,6 +13,7 @@ def get_kinematics(
     data_dict: dict = {},
 ):
     snap_id = snapshot_name(snapshot)
+    print(snap_id)
 
     proc_file = sim_dir + sim + "/" + sim + "_processed.hdf5"
     potential_file = data_dir + "potentials/" + sim + "/snap_%d/combined_snap_%d.ini" % (snapshot, snapshot)
@@ -41,7 +42,7 @@ def get_kinematics(
         if len(gc_id_snap) is None:
             continue
 
-        init_cond_lst = np.hstack((x, y, z, vx, vy, vz))
+        init_cond_lst = np.vstack((x, y, z, vx, vy, vz)).T
 
         ioms = af(init_cond_lst)
         jr = ioms[:, 0]

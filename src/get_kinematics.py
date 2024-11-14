@@ -79,7 +79,6 @@ if __name__ == "__main__":
 
     # look into this such that evenly sampled across time. as later snapshots are much faster
     snap_groups = np.array_split(snap_lst, cores)
-    print(snap_groups)
 
     with mp.Manager() as manager:
         shared_dict = manager.dict()  # Shared dictionary across processes

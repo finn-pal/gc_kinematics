@@ -9,27 +9,6 @@ from gc_utils import iteration_name, open_snapshot, snapshot_name  # type: ignor
 from tools.gc_kinematics import get_kinematics
 
 
-def main(
-    simulation: str,
-    it_lst: list[int],
-    # snap_lst: list[int],
-    snapshot: int,
-    sim_dir: str,
-    data_dir: str,
-    shared_dict: dict = {},
-):
-    fire_dir = sim_dir + simulation + "/" + simulation + "_res7100/"
-
-    # for snapshot in snap_lst:
-    #     part = open_snapshot(snapshot, fire_dir)
-    #     print(snapshot)
-    #     get_kinematics(part, simulation, it_lst, snapshot, sim_dir, data_dir, shared_dict)
-
-    part = open_snapshot(snapshot, fire_dir)
-    print(snapshot)
-    get_kinematics(part, simulation, it_lst, snapshot, sim_dir, data_dir, shared_dict)
-
-
 def add_kinematics_hdf5(simulation, it_lst: list[int], snap_lst: list[int], result_dict: dict, sim_dir: str):
     proc_file = sim_dir + simulation + "/" + simulation + "_processed.hdf5"
     proc_data = h5py.File(proc_file, "a")  # open processed data file
@@ -104,11 +83,10 @@ if __name__ == "__main__":
 
     with mp.Manager() as manager:
         shared_dict = manager.dict()  # Shared dictionary across processes
-        # args = [(sim, it_lst, snap_group, sim_dir, data_dir, shared_dict) for snap_group in snap_groups]
         args = [(sim, it_lst, snap, sim_dir, data_dir, shared_dict) for snap in snap_lst]
 
         with mp.Pool(processes=cores, maxtasksperchild=1) as pool:
-            pool.starmap(main, args, chunksize=1)
+            pool.starmap(get_kinematics, args, chunksize=1)
 
         result_dict = dict(shared_dict)
 

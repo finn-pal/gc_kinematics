@@ -1,21 +1,16 @@
-import time
-
 import agama
 import h5py
 import numpy as np
-import utilities as ut
 from gc_utils import iteration_name, snapshot_name  # type: ignore
 
 
 def get_kinematics(
-    part,
     sim: str,
     it_lst: list[int],
     snapshot: int,
     sim_dir: str,
     data_dir: str,
     data_dict: dict = {},
-    host_index: int = 0,
 ):
     snap_id = snapshot_name(snapshot)
 
@@ -30,135 +25,47 @@ def get_kinematics(
     for it in it_lst:
         it_id = iteration_name(it)
 
-        gc_id_snap = proc_data[it_id]["snapshots"][snap_id]["gc_id"]
+        snap_data = proc_data[it_id]["snapshots"][snap_id]
+        gc_id_snap = snap_data["gc_id"]
+
+        x = np.array(snap_data["x"])
+        y = np.array(snap_data["y"])
+        z = np.array(snap_data["z"])
+
+        vx = np.array(snap_data["vx"])
+        vy = np.array(snap_data["vy"])
+        vz = np.array(snap_data["vz"])
+
+        ek = np.array(snap_data["ek"])
 
         if len(gc_id_snap) is None:
             continue
 
-        ptype_byte_snap = proc_data[it_id]["snapshots"][snap_id]["ptype"]
-        ptype_snap = [ptype.decode("utf-8") for ptype in ptype_byte_snap]
-
-        host_name = ut.catalog.get_host_name(host_index)
-
-        x_lst = []
-        y_lst = []
-        z_lst = []
-        vx_lst = []
-        vy_lst = []
-        vz_lst = []
-
-        r_cyl_lst = []
-        phi_cyl_lst = []
-        vr_cyl_lst = []
-        vphi_cyl_lst = []
-
-        init_cond_lst = []
-
-        r_lst = []
-
-        ep_fire_lst = []
-        ek_lst = []
-
-        lx_lst = []
-        ly_lst = []
-        lz_lst = []
-
-        start = time.time()
-        print("start", it)
-        for gc, ptype in zip(gc_id_snap, ptype_snap):
-            idx = np.where(part[ptype]["id"] == gc)[0][0]
-            pos_xyz = part[ptype].prop(f"{host_name}.distance.principal", idx)
-            vel_xyz = part[ptype].prop(f"{host_name}.velocity.principal", idx)
-
-            pos_cyl = part[ptype].prop(f"{host_name}.distance.principal.cylindrical", idx)
-            vel_cyl = part[ptype].prop(f"{host_name}.velocity.principal.cylindrical", idx)
-
-            init_cond = np.concatenate((pos_xyz, vel_xyz))
-
-            ep_fir = part[ptype]["potential"][idx]
-            ek = 0.5 * np.linalg.norm(vel_xyz) ** 2
-
-            x, y, z = pos_xyz
-            vx, vy, vz = vel_xyz
-
-            r_cyl, phi_cyl, _ = pos_cyl
-            vr_cyl, vphi_cyl, _ = vel_cyl
-
-            r = np.linalg.norm(pos_xyz)
-
-            lx = y * vz - z * vy
-            ly = z * vx - x * vz
-            lz = x * vy - y * vx
-
-            x_lst.append(x)
-            y_lst.append(y)
-            z_lst.append(z)
-            vx_lst.append(vx)
-            vy_lst.append(vy)
-            vz_lst.append(vz)
-
-            r_cyl_lst.append(r_cyl)
-            phi_cyl_lst.append(phi_cyl)
-            vr_cyl_lst.append(vr_cyl)
-            vphi_cyl_lst.append(vphi_cyl)
-
-            r_lst.append(r)
-
-            ep_fire_lst.append(ep_fir)
-            ek_lst.append(ek)
-
-            lx_lst.append(lx)
-            ly_lst.append(ly)
-            lz_lst.append(lz)
-
-            init_cond_lst.append(init_cond)
-
-        mid = time.time()
-        print("mid", it, mid - start)
+        init_cond_lst = np.hstack((x, y, z, vx, vy, vz))
 
         ioms = af(init_cond_lst)
-        jr_lst = ioms[:, 0]
-        jz_lst = ioms[:, 1]
-        jphi_lst = ioms[:, 2]
+        jr = ioms[:, 0]
+        jz = ioms[:, 1]
+        jphi = ioms[:, 2]
 
         radii_pos = pot_nbody.Rperiapo(init_cond_lst)
-        r_per_lst = radii_pos[:, 0]
-        r_apo_lst = radii_pos[:, 1]
+        r_per = radii_pos[:, 0]
+        r_apo = radii_pos[:, 1]
 
-        ep_agama_lst = pot_nbody.potential(np.array(init_cond_lst)[:, 0:3])
-        et_lst = ep_agama_lst + ek_lst
+        ep_agama = pot_nbody.potential(np.array(init_cond_lst)[:, 0:3])
+        et = ep_agama + ek
 
         kin_dict = {
-            "x": np.array(x_lst),
-            "y": np.array(y_lst),
-            "z": np.array(z_lst),
-            "vx": np.array(vx_lst),
-            "vy": np.array(vy_lst),
-            "vz": np.array(vz_lst),
-            "r_cyl": np.array(r_cyl_lst),
-            "phi_cyl": np.array(phi_cyl_lst),
-            "vr_cyl": np.array(vr_cyl_lst),
-            "vphi_cyl": np.array(vphi_cyl_lst),
-            "r": np.array(r_lst),
-            "r_peri": r_per_lst,
-            "r_apoo": r_apo_lst,
-            "ep_fire": np.array(ep_fire_lst),
-            "ep_agama": ep_agama_lst,
-            "ek": np.array(ek_lst),
-            "et": et_lst,
-            "lx": np.array(lx_lst),
-            "ly": np.array(ly_lst),
-            "lz": np.array(lz_lst),
-            "jr": jr_lst,
-            "jz": jz_lst,
-            "jphi": jphi_lst,
+            "r_peri": r_per,
+            "r_apoo": r_apo,
+            "ep_agama": ep_agama,
+            "et": et,
+            "jr": jr,
+            "jz": jz,
+            "jphi": jphi,
         }
 
         it_dict[it_id] = kin_dict
-
-        end = time.time()
-        print("end", it, end - start)
-
     data_dict[snap_id] = it_dict
 
     return data_dict

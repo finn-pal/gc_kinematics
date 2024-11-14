@@ -8,8 +8,7 @@ import halo_analysis as halo
 import matplotlib.pyplot as plt
 import numpy as np
 import utilities as ut
-
-from gc_utils import get_main_vir_rad_snap, block_print, enable_print # type: ignore
+from gc_utils import block_print, enable_print, get_main_vir_rad_snap  # type: ignore
 
 # the below function "make_potential" is derived from that of "fitPotential" presented in the AGAMA package
 # under py -> "example_gizmo_snapshot"

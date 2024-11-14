@@ -6,17 +6,25 @@ from gc_utils import iteration_name, snapshot_name  # type: ignore
 
 
 def get_kinematics(
-    part, sim: str, it_lst: list[int], snapshot: int, sim_dir: str, data_dir: str, host_index: int = 0
+    part,
+    sim: str,
+    it_lst: list[int],
+    snapshot: int,
+    sim_dir: str,
+    data_dir: str,
+    data_dict: dict = {},
+    host_index: int = 0,
 ):
     snap_id = snapshot_name(snapshot)
 
     proc_file = sim_dir + sim + "/" + sim + "_processed.hdf5"
     potential_file = data_dir + "potentials/" + sim + "/snap_%d/combined_snap_%d.ini" % (snapshot, snapshot)
 
-    proc_data = h5py.File(proc_file, "a")  # open processed data file
+    proc_data = h5py.File(proc_file, "r")  # open processed data file
     pot_nbody = agama.Potential(potential_file)
     af = agama.ActionFinder(pot_nbody, interp=False)
 
+    it_dict = {}
     for it in it_lst:
         it_id = iteration_name(it)
 
@@ -114,48 +122,33 @@ def get_kinematics(
         et_lst = ep_agama_lst + ek_lst
 
         kin_dict = {
-            "x": x_lst,
-            "y": y_lst,
-            "z": z_lst,
-            "vx": vx_lst,
-            "vy": vy_lst,
-            "vz": vz_lst,
-            "r_cyl": r_cyl_lst,
-            "phi_cyl": phi_cyl_lst,
-            "vr_cyl": vr_cyl_lst,
-            "vphi_cyl": vphi_cyl_lst,
-            "r": r_lst,
+            "x": np.array(x_lst),
+            "y": np.array(y_lst),
+            "z": np.array(z_lst),
+            "vx": np.array(vx_lst),
+            "vy": np.array(vy_lst),
+            "vz": np.array(vz_lst),
+            "r_cyl": np.array(r_cyl_lst),
+            "phi_cyl": np.array(phi_cyl_lst),
+            "vr_cyl": np.array(vr_cyl_lst),
+            "vphi_cyl": np.array(vphi_cyl_lst),
+            "r": np.array(r_lst),
             "r_peri": r_per_lst,
             "r_apoo": r_apo_lst,
-            "ep_fire": ep_fire_lst,
+            "ep_fire": np.array(ep_fire_lst),
             "ep_agama": ep_agama_lst,
-            "ek": ek_lst,
+            "ek": np.array(ek_lst),
             "et": et_lst,
-            "lx": lx_lst,
-            "ly": ly_lst,
-            "lz": lz_lst,
+            "lx": np.array(lx_lst),
+            "ly": np.array(ly_lst),
+            "lz": np.array(lz_lst),
             "jr": jr_lst,
             "jz": jz_lst,
             "jphi": jphi_lst,
         }
 
-        # with h5py.File(data_file, "a") as hdf:
-        if it_id in proc_data.keys():
-            grouping = proc_data[it_id]
-        else:
-            grouping = proc_data.create_group(it_id)
-        if "snapshots" in grouping.keys():
-            kinematics = grouping["snapshots"]
-        else:
-            kinematics = grouping.create_group("snapshots")
-        if snap_id in kinematics.keys():
-            snap_group = kinematics[snap_id]
-        else:
-            snap_group = kinematics.create_group(snap_id)
-        for key in kin_dict.keys():
-            if key in snap_group.keys():
-                del snap_group[key]
+        it_dict[it_id] = kin_dict
 
-            snap_group.create_dataset(key, data=kin_dict[key])
+    data_dict[snap_id] = it_dict
 
-    proc_data.close()
+    return data_dict

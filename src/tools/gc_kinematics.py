@@ -53,6 +53,8 @@ def get_kinematics(
         r_per = radii_pos[:, 0]
         r_apo = radii_pos[:, 1]
 
+        eccentricity = (r_apo - r_per) / (r_apo + r_per)
+
         ep_agama = pot_nbody.potential(np.array(init_cond_lst)[:, 0:3])
         et = ep_agama + ek
 
@@ -64,6 +66,7 @@ def get_kinematics(
             "jr": jr,
             "jz": jz,
             "jphi": jphi,
+            "ecc": eccentricity,
         }
 
         it_dict[it_id] = kin_dict

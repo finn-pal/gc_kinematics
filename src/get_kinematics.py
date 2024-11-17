@@ -4,7 +4,7 @@ import multiprocessing as mp
 
 import h5py
 import numpy as np
-from gc_utils import iteration_name, open_snapshot, snapshot_name  # type: ignore
+from gc_utils import iteration_name, snapshot_name  # type: ignore
 
 from tools.gc_kinematics import get_kinematics
 

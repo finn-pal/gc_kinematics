@@ -41,8 +41,8 @@ def add_kinematics_hdf5(simulation, it_lst: list[int], snap_lst: list[int], resu
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-s", "--simulation", required=True, type=str, help="simulation name (e.g. m12i)")
-    parser.add_argument("-l", "--it_min", required=True, type=int, help="lower bound iteration")
-    parser.add_argument("-u", "--it_max", required=True, type=int, help="upper bound iteration")
+    parser.add_argument("-a", "--iteration_low_limit", required=True, type=int, help="lower bound iteration")
+    parser.add_argument("-b", "--iteration_up_limit", required=True, type=int, help="upper bound iteration")
     parser.add_argument("-c", "--cores", required=False, type=int, help="number of cores to run process on")
     parser.add_argument(
         "-n",
@@ -55,14 +55,14 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    it_min = args.it_min
-    it_max = args.it_max
+    it_min = args.iteration_low_limit
+    it_max = args.iteration_up_limit
     it_lst = np.linspace(it_min, it_max, it_max - it_min + 1, dtype=int)
 
     sim = args.simulation
 
-    sim_dir = "/Users/z5114326/Documents/simulations/"
-    data_dir = "/Users/z5114326/Documents/GitHub/gc_kinematics_new/data/"
+    sim_dir = "../../simulations/"
+    data_dir = "data/"
 
     potential_snaps = data_dir + "external/potentials.json"
     with open(potential_snaps) as json_file:

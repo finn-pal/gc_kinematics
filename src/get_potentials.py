@@ -23,8 +23,8 @@ if __name__ == "__main__":
     simulation = args.simulation
     snapshots = args.snapshots
 
-    sim_dir = "/Users/z5114326/Documents/simulations/"
-    data_dir = "/Users/z5114326/Documents/GitHub/gc_kinematics_new/data/"
+    sim_dir = "../../simulations/"
+    data_dir = "data/"
 
     if snapshots is None:
         snap_lst = data_dir + "external/potentials.json"

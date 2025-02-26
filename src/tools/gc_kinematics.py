@@ -21,6 +21,7 @@ def get_kinematics(
     proc_data = h5py.File(proc_file, "r")  # open processed data file
     pot_nbody = agama.Potential(potential_file)
     af = agama.ActionFinder(pot_nbody, interp=False)
+    agama.setUnits(mass=1, length=1, velocity=1)
 
     it_dict = {}
     for it in it_lst:

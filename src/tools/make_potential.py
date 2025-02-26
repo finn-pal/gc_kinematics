@@ -355,8 +355,10 @@ def compare_potentials(
         data = json.load(json_file)
 
     host_tid = [data[sim]["halo"]]
-    host_idx = np.where(halt["tid"] == host_tid)[0][0]
-    host_name = ut.catalog.get_host_name(host_idx)
+    # host_idx = np.where(halt["tid"] == host_tid)[0][0]
+
+    #### I think the way I am defining host name is wrong host_index == 0 always
+    host_name = ut.catalog.get_host_name(0)
 
     max_rad = get_main_vir_rad_snap(halt, host_tid, snapshot)
     max_rad = int(max_rad)

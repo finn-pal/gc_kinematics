@@ -75,7 +75,8 @@ if __name__ == "__main__":
     cores = args.cores
     if cores is None:
         # 4 cores is max to run with 64 GB RAM
-        cores = mp.cpu_count()
+        # cores = mp.cpu_count()
+        cores = 4
 
     # look into this such that evenly sampled across time. as later snapshots are much faster
     snap_groups = np.array_split(snap_lst, cores)

@@ -12,6 +12,7 @@ from tools.gc_kinematics import get_kinematics
 def add_kinematics_hdf5(simulation, it_lst: list[int], snap_lst: list[int], result_dict: dict, sim_dir: str):
     proc_file = sim_dir + simulation + "/" + simulation + "_processed.hdf5"
     proc_data = h5py.File(proc_file, "a")  # open processed data file
+    # proc_data.swmr_mode = True  # enable SWMR mode after opening the file
 
     for it in it_lst:
         it_id = iteration_name(it)
@@ -32,6 +33,7 @@ def add_kinematics_hdf5(simulation, it_lst: list[int], snap_lst: list[int], resu
             for key in result_dict[snap_id][it_id].keys():
                 if key in snapshot.keys():
                     del snapshot[key]
+                    snapshot.create_dataset(key, data=result_dict[snap_id][it_id][key])
                 else:
                     snapshot.create_dataset(key, data=result_dict[snap_id][it_id][key])
 

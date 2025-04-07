@@ -19,9 +19,10 @@ def get_kinematics(
     potential_file = data_dir + "potentials/" + sim + "/snap_%d/combined_snap_%d.ini" % (snapshot, snapshot)
 
     proc_data = h5py.File(proc_file, "r")  # open processed data file
+
+    agama.setUnits(mass=1, length=1, velocity=1)
     pot_nbody = agama.Potential(potential_file)
     af = agama.ActionFinder(pot_nbody, interp=False)
-    agama.setUnits(mass=1, length=1, velocity=1)
 
     it_dict = {}
     for it in it_lst:
@@ -59,18 +60,46 @@ def get_kinematics(
         ep_agama = pot_nbody.potential(np.array(init_cond_lst)[:, 0:3])
         et = ep_agama + ek
 
+        # It has been found that some GCs (e.g. at snap 214) are not bound (et > 0)
+        # This has resulted in failed normalisation by circular velocities
+        bound_flag = (et <= 0).astype(int)
+
+        ##### add circular normalised data #####
+        lz = np.array(snap_data["lz"])
+
+        if len(et) == 1:
+            # pot.Rcirc it didn't like handling arrays of 1
+            et = et[0]
+
+        r_circs = pot_nbody.Rcirc(E=et)
+        xyz = np.column_stack((r_circs, r_circs * 0, r_circs * 0))
+        v_circs = np.sqrt(-r_circs * pot_nbody.force(xyz)[:, 0])
+        vel = np.column_stack((v_circs * 0, v_circs, v_circs * 0))
+        init_conds = np.concatenate((xyz, vel), axis=1)
+        lz_circ = af(init_conds)[:, 2]
+
+        E_0 = pot_nbody.potential((0, 0, 0))
+
+        lz_norm = lz / np.array(lz_circ)
+        et_norm = et / np.abs(E_0)
+
         kin_dict = {
-            "r_peri": r_per,
-            "r_apoo": r_apo,
+            "r_per": r_per,
+            "r_apo": r_apo,
             "ep_agama": ep_agama,
             "et": et,
             "jr": jr,
             "jz": jz,
             "jphi": jphi,
             "ecc": eccentricity,
+            "lz_norm": lz_norm,
+            "et_norm": et_norm,
+            "bound_flag": bound_flag,
         }
 
         it_dict[it_id] = kin_dict
     data_dict[snap_id] = it_dict
+
+    proc_data.close()
 
     return data_dict

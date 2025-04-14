@@ -1,4 +1,0 @@
-# sim m12i
-# snapshot 593 
-# potential offset 
-1.607633621772723563e+05

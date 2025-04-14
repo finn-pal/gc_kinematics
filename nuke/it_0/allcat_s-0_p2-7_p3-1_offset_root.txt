@@ -1,2 +1,0 @@
-# SubfindID(z=0) | BeginIdx | EndIdx+1 | BeginIdx in offset | EndIdx in offset
-25236877  0  14196  0  1753 

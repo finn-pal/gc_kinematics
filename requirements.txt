@@ -11,7 +11,7 @@ debugpy==1.8.8
 decorator==5.1.1
 executing==2.1.0
 fonttools==4.54.1
--e git+https://github.com/finn-pal/gc_simulation_utilities.git@8ccd0dbf0339c59aa925746f493405dd07bf19d7#egg=gc_simulation_utilities
+# gc_simulation_utilities @ file:///Users/z5114326/Documents/GitHub/gc_simulation_utilities
 gizmo_analysis==1.0.2
 h5py==3.12.1
 halo_analysis==1.0.2
@@ -26,6 +26,7 @@ matplotlib-inline==0.1.7
 nest-asyncio==1.6.0
 numpy==1.26.0
 packaging==24.2
+pandas==2.2.3
 parso==0.8.4
 pexpect==4.9.0
 pillow==11.0.0

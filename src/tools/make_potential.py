@@ -1,14 +1,17 @@
 import json
 import os
-import sys
+import time
+import warnings
 
 import agama
+import gc_utils
 import gizmo_analysis as gizmo
 import halo_analysis as halo
 import matplotlib.pyplot as plt
 import numpy as np
 import utilities as ut
-from gc_utils import block_print, enable_print, get_main_vir_rad_snap  # type: ignore
+
+# from gc_utils import block_print, enable_print, get_main_vir_rad_snap  # type: ignore
 
 # the below function "make_potential" is derived from that of "fitPotential" presented in the AGAMA package
 # under py -> "example_gizmo_snapshot"
@@ -32,8 +35,7 @@ def make_potential(
     sim: str,
     snapshot: int,
     sim_dir: str,
-    data_dir: str,
-    symmetry: str = "a",
+    symmetry: str = "a",  # needs to be a for orbit propagation
     subsample_factor: int = 1,
     rmax_sel: int = 600,
     rmax_ctr: int = 10,
@@ -44,6 +46,8 @@ def make_potential(
     compare_plot: bool = True,
     verbose: bool = False,
 ):
+    print(snapshot)
+    start_time = time.time()
     # define the physical units used in the code: the choice below corresponds to
     # length scale = 1 kpc, velocity = 1 km/s, mass = 1 Msun
     agama.setUnits(mass=1, length=1, velocity=1)
@@ -58,7 +62,7 @@ def make_potential(
         print("reading snapshot")
 
     # block printing
-    block_print()
+    gc_utils.block_print()
 
     # read in the snapshot
     part = gizmo.io.Read.read_snapshots(
@@ -71,38 +75,97 @@ def make_potential(
     )
 
     # enable printing
-    enable_print()
+    gc_utils.enable_print()
 
-    # start with default centering and rotation to define aperture
-    dist = ut.particle.get_distances_wrt_center(
-        part, species=ptypes, center_position=part.host["position"], rotation=True, total_distance=True
-    )
+    ###################################################################################################
+    # update 08/04/2024
+    # this is to fix the centring of the potenital on the progenitor of the host at z = 0 rather than the
+    # host at the relevant snapshot.
 
-    dist_vectors = ut.particle.get_distances_wrt_center(
-        part, species=ptypes, center_position=part.host["position"], rotation=True
-    )
+    # block printing
+    gc_utils.block_print()
+    halt = halo.io.IO.read_tree(simulation_directory=fire_dir)
+    # enable printing
+    gc_utils.enable_print()
+
+    sim_codes = sim_dir + "simulation_codes.json"
+    with open(sim_codes) as sim_json:
+        sim_data = json.load(sim_json)
+    main_halo_tid = [sim_data[sim]["halo"]]
+
+    halt_center_snap_lst = sim_data[sim]["dm_center"]
+    use_dm_center = snapshot in halt_center_snap_lst
+
+    # check to see is the progentior of the host at z = 0 is the host at this snapshot
+    not_host_snap_lst = gc_utils.get_different_snap_lst(main_halo_tid, halt, sim, sim_dir)
+    is_main_host = snapshot not in not_host_snap_lst
+
+    if (not is_main_host) or (use_dm_center):
+        halo_tid = gc_utils.get_main_prog_at_snap(halt, main_halo_tid, snapshot)
+
+        if use_dm_center:
+            halo_details = gc_utils.get_dm_halo_details(part, halt, halo_tid, snapshot, True)
+        else:
+            halo_details = gc_utils.get_halo_details(part, halt, halo_tid, snapshot)
+
+        # start with default centering and rotation to define aperture
+        dist = ut.particle.get_distances_wrt_center(
+            part,
+            species=ptypes,
+            center_position=halo_details["position"],
+            rotation=halo_details["rotation"],
+            total_distance=True,
+        )
+
+        # i dont think i need distance vectors here and also i dont think rotation matters in this first part
+        # dist_vectors = ut.particle.get_distances_wrt_center(
+        #     part,
+        #     species=ptypes,
+        #     center_position=halo_details["position"],
+        #     rotation=halo_details["rotation"],
+        # )
+
+    else:
+        # start with default centering and rotation to define aperture
+        dist = ut.particle.get_distances_wrt_center(
+            part, species=ptypes, center_position=part.host["position"], rotation=True, total_distance=True
+        )
+
+        # dist_vectors = ut.particle.get_distances_wrt_center(
+        #     part, species=ptypes, center_position=part.host["position"], rotation=True
+        # )
 
     # compute new centering and rotation using a fixed aperture in stars
-
     sp = "star"
     ctr_indices = np.where(dist[sp] < rmax_ctr)[0]
 
-    m = part[sp]["mass"][ctr_indices]
-    pos = part[sp]["position"][ctr_indices]
-    vel = part[sp]["velocity"][ctr_indices]
-    new_ctr = np.multiply(m, pos.T).sum(axis=1) / np.sum(m)
-    new_vctr = np.multiply(m, vel.T).sum(axis=1) / np.sum(m)
+    if len(ctr_indices) > 0:
+        m = part[sp]["mass"][ctr_indices]
+        pos = part[sp]["position"][ctr_indices]
+        vel = part[sp]["velocity"][ctr_indices]
+        new_ctr = np.multiply(m, pos.T).sum(axis=1) / np.sum(m)
+        new_vctr = np.multiply(m, vel.T).sum(axis=1) / np.sum(m)
+
+    else:
+        sp = "dark"
+        ctr_indices = np.where(dist[sp] < rmax_ctr)[0]
+        m = part[sp]["mass"][ctr_indices]
+        pos = part[sp]["position"][ctr_indices]
+        vel = part[sp]["velocity"][ctr_indices]
+        new_ctr = np.multiply(m, pos.T).sum(axis=1) / np.sum(m)
+        new_vctr = np.multiply(m, vel.T).sum(axis=1) / np.sum(m)
 
     # block printing
-    block_print()
+    gc_utils.block_print()
 
-    new_rot = ut.particle.get_principal_axes(part, species_name="star", part_indicess=ctr_indices)
+    new_rot = ut.particle.get_principal_axes(
+        part, species_name=sp, part_indicess=ctr_indices, center_positions=new_ctr, center_velocities=new_vctr
+    )
 
     # enable printing
-    enable_print()
+    gc_utils.enable_print()
 
     # optionally compute acceleration of center of mass frame if it was recorded
-
     save_accel = "acceleration" in part[sp].keys()
 
     if save_accel:
@@ -178,7 +241,8 @@ def make_potential(
     pos_pa_dark = np.vstack((pos_pa_dark, pos_pa_gas_hot))
     m_dark = np.hstack((m_dark, m_gas_hot))
 
-    save_dir = data_dir + "potentials/" + sim + "/snap_%d/" % snapshot  # save location
+    # save_dir = data_dir + "potentials/" + sim + "/snap_%d/" % snapshot  # save location
+    save_dir = sim_dir + sim + "/potentials" + "/snap_%d/" % snapshot  # save location
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
 
@@ -261,12 +325,12 @@ def make_potential(
 
         if compare_plot:
             # block printing
-            block_print()
+            gc_utils.block_print()
 
             halt = halo.io.IO.read_tree(simulation_directory=fire_dir)
 
             # enable printing
-            enable_print()
+            gc_utils.enable_print()
 
             compare_potentials(
                 pot_nbody,
@@ -274,13 +338,20 @@ def make_potential(
                 halt,
                 sim,
                 snapshot,
-                data_dir=data_dir,
+                sim_dir=sim_dir,
+                save_dir=save_dir,
                 save_plot=save_plot,
                 print_plot=print_plot,
             )
 
         if not print_plot:
             plt.close()
+
+    end_time = time.time()
+    print(snapshot, "time:", end_time - start_time)
+
+    del part
+    del halt
 
 
 def plot_potential(
@@ -343,32 +414,42 @@ def compare_potentials(
     z_width: float = 1,
     r_width: float = 2,
     bin_width: float = 1,
-    data_dir: str = None,
+    sim_dir: str = None,  # this shouldn't be None
+    save_dir: str = None,  # this shouldn't be None
     save_plot: bool = False,
     print_plot: bool = True,
     save_offset: bool = True,
 ):
-    save_dir = data_dir + "potentials/" + sim + "/snap_%d/" % snapshot  # save location
+    # to avoid the empty array warnings
+    np.seterr(divide="ignore", invalid="ignore")
 
-    sim_codes = data_dir + "external/simulation_codes.json"
-    with open(sim_codes) as json_file:
-        data = json.load(json_file)
+    # Suppress Python RuntimeWarnings (like "Mean of empty slice")
+    warnings.filterwarnings("ignore", category=RuntimeWarning)
 
-    host_tid = [data[sim]["halo"]]
+    # save_dir = data_dir + "potentials/" + sim + "/snap_%d/" % snapshot  # save location
+    # save_dir = sim_dir + sim + "potentials" + "/snap_%d/" % snapshot  # save location
+
+    sim_codes = sim_dir + "simulation_codes.json"
+    with open(sim_codes) as sim_json:
+        sim_data = json.load(sim_json)
+    main_halo_tid = [sim_data[sim]["halo"]]
+
+    halt_center_snap_lst = sim_data[sim]["dm_center"]
+    use_dm_center = snapshot in halt_center_snap_lst
+
+    # host_tid = [data[sim]["halo"]]
     # host_idx = np.where(halt["tid"] == host_tid)[0][0]
 
     #### I think the way I am defining host name is wrong host_index == 0 always
-    host_name = ut.catalog.get_host_name(0)
+    # host_name = ut.catalog.get_host_name(0)
 
-    max_rad = get_main_vir_rad_snap(halt, host_tid, snapshot)
+    max_rad = gc_utils.get_main_vir_rad_snap(halt, main_halo_tid, snapshot)
     max_rad = int(max_rad)
 
     gridR = np.linspace(0, max_rad, int(10 * max_rad) + 1)
     gridz = agama.symmetricGrid(10 * max_rad + 1, 0.01, max_rad)
     gridR00 = np.column_stack((gridR, gridR * 0, gridR * 0))
     grid00z = np.column_stack((gridz * 0, gridz * 0, gridz))
-
-    potential_lst = np.array([])
 
     ptype_lst = ["star", "gas", "dark"]
 
@@ -377,11 +458,37 @@ def compare_potentials(
     z_min = -z_width / 2
     z_max = z_width / 2
 
+    # check to see is the progentior of the host at z = 0 is the host at this snapshot
+    not_host_snap_lst = gc_utils.get_different_snap_lst(main_halo_tid, halt, sim, sim_dir)
+    is_main_host = snapshot not in not_host_snap_lst
+
+    if (not is_main_host) or (use_dm_center):
+        halo_tid = gc_utils.get_main_prog_at_snap(halt, main_halo_tid, snapshot)
+
+        if use_dm_center:
+            halo_details = gc_utils.get_dm_halo_details(part, halt, halo_tid, snapshot, True)
+        else:
+            halo_details = gc_utils.get_halo_details(part, halt, halo_tid, snapshot)
+
+    potential_lst = np.array([])
+
     for ptype in ptype_lst:
-        cyl = part[ptype].prop(f"{host_name}.distance.principal.cylindrical")
+        if (not is_main_host) or (use_dm_center):
+            cyl = ut.particle.get_distances_wrt_center(
+                part,
+                species=[ptype],
+                center_position=halo_details["position"],
+                rotation=halo_details["rotation"],
+                coordinate_system="cylindrical",
+            )
+
+        else:
+            cyl = part[ptype].prop("host.distance.principal.cylindrical")
+
         mask = (
             (r_lim_min <= cyl[:, 0]) & (cyl[:, 0] <= r_lim_max) & (z_min <= cyl[:, 2]) & (cyl[:, 2] <= z_max)
         )
+
         potentials = np.array(part[ptype]["potential"][mask])
         potential_lst = np.concatenate((potential_lst, potentials))
 
@@ -394,7 +501,17 @@ def compare_potentials(
     z_potential_list = np.array([])
 
     for ptype in ptype_lst:
-        cyl = part[ptype].prop(f"{host_name}.distance.principal.cylindrical")
+        if (not is_main_host) or (use_dm_center):
+            cyl = ut.particle.get_distances_wrt_center(
+                part,
+                species=[ptype],
+                center_position=halo_details["position"],
+                rotation=halo_details["rotation"],
+                coordinate_system="cylindrical",
+            )
+
+        else:
+            cyl = part[ptype].prop("host.distance.principal.cylindrical")
 
         r_mask = (cyl[:, 0] <= max_rad) & (z_min <= cyl[:, 2]) & (cyl[:, 2] <= z_max)
         r_cyl_mask = cyl[:, 0][r_mask]
@@ -501,7 +618,7 @@ def compare_potentials(
     ax11.set_xlabel("z (kpc)")
     ax11.set_ylabel("Relative Error")
     # ax11.set_ylim(0, np.round(np.nanmax(z_error_lst), 2))
-    z_lim_max = np.ceil(np.nanmax(z_error_lst) * 100) / 100.0
+    # z_lim_max = np.ceil(np.nanmax(z_error_lst) * 100) / 100.0
     # ax11.set_ylim(0, z_lim_max)
 
     ax12.hist(z_error_lst, bins=error_bins, histtype="step")
@@ -531,5 +648,3 @@ def compare_potentials(
             f.write("# snapshot %d \n" % snapshot)
             f.write("# potential offset \n")
             np.savetxt(f, [potential_offset])
-
-    del part

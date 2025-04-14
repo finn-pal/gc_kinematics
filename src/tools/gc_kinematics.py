@@ -9,14 +9,13 @@ def get_kinematics(
     it_lst: list[int],
     snapshot: int,
     sim_dir: str,
-    data_dir: str,
     data_dict: dict = {},
 ):
     snap_id = snapshot_name(snapshot)
     print(snap_id)
 
     proc_file = sim_dir + sim + "/" + sim + "_processed.hdf5"
-    potential_file = data_dir + "potentials/" + sim + "/snap_%d/combined_snap_%d.ini" % (snapshot, snapshot)
+    potential_file = sim_dir + sim + "/potentials/snap_%d/combined_snap_%d.ini" % (snapshot, snapshot)
 
     proc_data = h5py.File(proc_file, "r")  # open processed data file
 
@@ -31,13 +30,23 @@ def get_kinematics(
         snap_data = proc_data[it_id]["snapshots"][snap_id]
         gc_id_snap = snap_data["gc_id"]
 
-        x = np.array(snap_data["x"])
-        y = np.array(snap_data["y"])
-        z = np.array(snap_data["z"])
+        # x = np.array(snap_data["x"])
+        # y = np.array(snap_data["y"])
+        # z = np.array(snap_data["z"])
 
-        vx = np.array(snap_data["vx"])
-        vy = np.array(snap_data["vy"])
-        vz = np.array(snap_data["vz"])
+        pos = snap_data["pos.xyz"][()]
+        x = pos[:, 0]
+        y = pos[:, 1]
+        z = pos[:, 2]
+
+        # vx = np.array(snap_data["vx"])
+        # vy = np.array(snap_data["vy"])
+        # vz = np.array(snap_data["vz"])
+
+        vel = snap_data["vel.xyz"][()]
+        vx = vel[:, 0]
+        vy = vel[:, 1]
+        vz = vel[:, 2]
 
         ek = np.array(snap_data["ek"])
 
@@ -65,7 +74,8 @@ def get_kinematics(
         bound_flag = (et <= 0).astype(int)
 
         ##### add circular normalised data #####
-        lz = np.array(snap_data["lz"])
+        l_xyz = snap_data["l.xyz"][()]
+        lz = l_xyz[:, 2]
 
         if len(et) == 1:
             # pot.Rcirc it didn't like handling arrays of 1

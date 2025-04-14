@@ -25,7 +25,7 @@ if __name__ == "__main__":
     # data_dir = "data/"
 
     if snapshots is None:
-        snap_lst = sim_dir + "potentials.json"
+        snap_lst = sim_dir + sim + "/potentials.json"
         with open(snap_lst) as snap_json:
             snap_data = json.load(snap_json)
             snapshots = snap_data[sim]

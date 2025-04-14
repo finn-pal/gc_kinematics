@@ -64,9 +64,8 @@ if __name__ == "__main__":
     sim = args.simulation
 
     sim_dir = "../../simulations/"
-    data_dir = "data/"
 
-    potential_snaps = data_dir + "external/potentials.json"
+    potential_snaps = sim_dir + sim + "/potentials.json"
     with open(potential_snaps) as json_file:
         pot_data = json.load(json_file)
 
@@ -85,7 +84,7 @@ if __name__ == "__main__":
 
     with mp.Manager() as manager:
         shared_dict = manager.dict()  # Shared dictionary across processes
-        args = [(sim, it_lst, snap, sim_dir, data_dir, shared_dict) for snap in snap_lst]
+        args = [(sim, it_lst, snap, sim_dir, shared_dict) for snap in snap_lst]
 
         with mp.Pool(processes=cores, maxtasksperchild=1) as pool:
             pool.starmap(get_kinematics, args, chunksize=1)

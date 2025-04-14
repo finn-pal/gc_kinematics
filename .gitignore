@@ -2,3 +2,5 @@
 .vscode/
 nuke/
 notebooks/
+data_old/
+data/

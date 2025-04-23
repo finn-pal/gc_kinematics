@@ -92,3 +92,6 @@ if __name__ == "__main__":
         result_dict = dict(shared_dict)
 
     add_kinematics_hdf5(sim, it_lst, snap_lst, result_dict, sim_dir)
+
+
+# ADD PARTICULAR CIRCULARITY AS STATED IN THROB

@@ -41,3 +41,5 @@ if __name__ == "__main__":
         # for snapshot in snapshots:
         #     print(snapshot)
         pool.starmap(make_potential, [(sim, snapshot, sim_dir) for snapshot in snapshots])
+
+        # the radial extent to which the potential are created needs to have a redshift dependence.

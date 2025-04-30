@@ -45,6 +45,7 @@ def make_potential(
     print_plot: bool = False,
     compare_plot: bool = True,
     verbose: bool = False,
+    disk_limt: int = None,
 ):
     print(snapshot)
     start_time = time.time()
@@ -293,16 +294,44 @@ def make_potential(
 
     # get potential for stars and cold gas via cylspline
 
-    p_disk = agama.Potential(
-        type="cylspline",
-        particles=(pos_pa_bar, m_bar),
-        mmax=0,
-        symmetry=symmetry,
-        gridsizer=20,
-        gridsizez=20,
-        rmin=0.1,
-        rmax=rmax_exp,
-    )
+    if disk_limt is None:
+        p_disk = agama.Potential(
+            type="cylspline",
+            particles=(pos_pa_bar, m_bar),
+            mmax=0,
+            symmetry=symmetry,
+            gridsizer=20,
+            gridsizez=20,
+            rmin=0.1,
+            rmax=rmax_exp,
+        )
+
+    else:
+        if snapshot >= disk_limt:
+            # if snapshot is after disk formation plot as disk
+            p_disk = agama.Potential(
+                type="cylspline",
+                particles=(pos_pa_bar, m_bar),
+                mmax=0,
+                symmetry=symmetry,
+                gridsizer=20,
+                gridsizez=20,
+                rmin=0.1,
+                rmax=rmax_exp,
+            )
+
+        else:
+            # else plot as multipole
+            p_disk = agama.Potential(
+                type="multipole",
+                particles=(pos_pa_bar, m_bar),
+                lmax=2,
+                mmax=0,
+                gridSizeR=20,
+                symmetry=symmetry,
+                rmin=0.1,
+                rmax=rmax_exp,
+            )
 
     # save disk potential
     pot_disk = "disk_snap_%d.ini" % snapshot

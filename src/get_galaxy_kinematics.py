@@ -1,4 +1,8 @@
+import argparse
 import json
+import multiprocessing as mp
+import os
+import time
 
 import gc_utils
 import halo_analysis as halo
@@ -6,14 +10,24 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import utilities as ut
+from matplotlib import colors
+
+_global_halt = None
 
 
-def constant_star_snap(halt, main_halo_tid: int, sim_dir: str = None, get_public_snap: bool = False):
+def init_worker(halt_obj):
+    global _global_halt
+    _global_halt = halt_obj
+
+
+def constant_star_snap(halt, main_halo_tid: int, sim_dir: str = None, get_public_snap: bool = True):
     idx = np.where(halt["tid"] == main_halo_tid)[0][0]
 
     while halt["star.radius.90"][idx] > 0:
         star_snap = halt["snapshot"][idx]
         idx = halt["progenitor.main.index"][idx]
+
+        snap_lst = np.arange(star_snap, 601)
 
     if get_public_snap:
         if sim_dir is None:
@@ -31,9 +45,9 @@ def constant_star_snap(halt, main_halo_tid: int, sim_dir: str = None, get_public
         ]
         snap_lst = snap_pub_data["index"]
 
-        star_snap = np.min(snap_lst[snap_lst >= star_snap])
+        snap_lst = np.array(snap_lst[snap_lst >= star_snap])
 
-    return star_snap
+    return snap_lst
 
 
 def get_halo_center(part, halt, main_halo_tid, sim, sim_dir, snapshot):
@@ -79,6 +93,8 @@ def get_kappa_co(
     disk_ptypes: list[str] = ["star", "gas"],
     log_t_max: float = 4.5,
 ):
+    # Combination of Correa 2017, Thob 2019, Jiminez 2023
+
     host_return_dict = get_halo_center(part, halt, main_halo_tid, sim, sim_dir, snapshot)
 
     # create dict
@@ -280,7 +296,6 @@ def get_v_sigma(
     # Look at Kareen El-Badry 2018 Gas Kinematics, morphology
 
     host_return_dict = get_halo_center(part, halt, main_halo_tid, sim, sim_dir, snapshot)
-
     if (bin_size is not None) and (bin_num is not None):
         raise RuntimeError("Only select one method for bin creation")
 
@@ -478,85 +493,267 @@ def get_v_sigma(
     return v_sig_dict
 
 
-def get_densities(
+def make_images(
     part,
     halt,
-    main_halo_tid: int,
-    sim: str,
-    sim_dir: str,
-    snapshot: int,
-    r_limit: float,
-    z_lim_fraction: float,
-    disk_ptypes: list[str] = ["star", "gas"],
+    distance_max,
+    distance_bin_width,
+    main_halo_tid,
+    sim,
+    sim_dir,
+    snapshot,
+    species=["star", "gas", "dark"],
+    weight_name="mass",
+    image_limits=[None, None],
 ):
+    dimen_label = {0: "x", 1: "y", 2: "z"}
+
     host_return_dict = get_halo_center(part, halt, main_halo_tid, sim, sim_dir, snapshot)
 
-    if host_return_dict["use_host_prop"]:
-        host_pos = part.host["position"]
-        host_rot = part.host["rotation"][0]
+    # get distance limits for plot
+    position_limits = [[-distance_max, distance_max] for _ in range(2)]
+    position_limits = np.array(position_limits)
+
+    # get number of bins (pixels) along each dimension
+    position_bin_number = int(np.round(2 * np.max(distance_max) / distance_bin_width))
+
+    num_rows = len(species)
+    num_cols = 3
+
+    fig_height = 6 * num_rows
+    fig, axs = plt.subplots(num_rows, num_cols, figsize=(20, fig_height))
+
+    for i, spec in enumerate(species):
+        if host_return_dict["use_host_prop"]:
+            positions = part[spec].prop("host.distance.principal")
+
+        else:
+            halo_detail_dict = host_return_dict["halo_details"]
+
+            positions = ut.particle.get_distances_wrt_center(
+                part,
+                species=[spec],
+                center_position=halo_detail_dict["position"],
+                rotation=halo_detail_dict["rotation"],
+                coordinate_system="cartesian",
+                total_distance=False,
+            )
+
+        weights = None
+        if weight_name:
+            weights = part[spec].prop(weight_name)
+
+        # set color map
+        if spec == "dark":
+            color_map = plt.cm.afmhot
+        elif spec == "gas":
+            color_map = plt.cm.afmhot
+        elif spec == "star":
+            color_map = plt.cm.afmhot
+
+        for plot_num in range(0, 3):
+            if plot_num == 0:
+                dims = [0, 1]
+            if plot_num == 1:
+                dims = [0, 2]
+            if plot_num == 2:
+                dims = [1, 2]
+
+            # keep only particles within distance limits along each dimension
+            masks = positions[:, dims[0]] <= distance_max
+            for dim_i in dims:
+                masks *= (positions[:, dim_i] >= -distance_max) * (positions[:, dim_i] <= distance_max)
+
+            plot_pos = positions[masks]
+            if weights is not None:
+                plot_weights = weights[masks]
+
+            hist_valuess, hist_xs, hist_ys = np.histogram2d(
+                plot_pos[:, dims[0]],
+                plot_pos[:, dims[1]],
+                position_bin_number,
+                position_limits,
+                weights=plot_weights,
+            )
+
+            # convert to surface density
+            hist_valuess /= np.diff(hist_xs)[0] * np.diff(hist_ys)[0]
+
+            if num_rows == 1:
+                ax = axs[plot_num]
+            else:
+                ax = axs[i, plot_num]
+
+            ax.set_xlim(position_limits[0])
+            ax.set_ylim(position_limits[1])
+
+            ax.set_xlabel(f"{dimen_label[dims[0]]} $\\left[ {{\\rm kpc}} \\right]$")
+            ax.set_ylabel(f"{dimen_label[dims[1]]} $\\left[ {{\\rm kpc}} \\right]$")
+
+            # make 2-D histogram image
+            Image = ax.imshow(
+                hist_valuess.transpose(),
+                norm=colors.LogNorm(),
+                cmap=color_map,
+                aspect="auto",
+                interpolation="bilinear",
+                extent=np.concatenate(position_limits),
+                vmin=image_limits[0],
+                vmax=image_limits[1],
+            )
+
+            fig.colorbar(Image)
+
+            if plot_num == 1:
+                ax.set_title(spec)
+
+    save_path = sim_dir + sim + "/galaxy_images/"
+    if not os.path.exists(save_path):
+        os.makedirs(save_path)
+
+    fig_file = "snap_%d.png" % snapshot
+    fig.savefig(save_path + fig_file)
+
+    # plt.show(block=False)
+
+
+def compile_kinematics(main_halo_tid: int, sim: str, sim_dir: str, snapshot: int):
+    start_time = time.time()
+    fire_dir = sim_dir + sim + "/" + sim + "_res7100/"
+
+    global _global_halt
+    halt = _global_halt  # safely read it
+
+    use_stellar_radius = True
+    stellar_radius_multiplier = 2
+    r_max = None
+
+    snap_halo_tid = gc_utils.get_halo_prog_at_snap(halt, main_halo_tid, snapshot)
+    snap_halo_idx = np.where(halt["tid"] == snap_halo_tid)[0][0]
+
+    if use_stellar_radius:
+        r_limit = stellar_radius_multiplier * halt["star.radius.90"][snap_halo_idx]
 
     else:
-        halo_detail_dict = host_return_dict["halo_details"]
-        host_pos = halo_detail_dict["position"]
-        host_rot = halo_detail_dict["rotation"]
+        if r_max is None:
+            raise RuntimeError("Need to provide r_max value if not using stellar radius")
+        else:
+            r_limit = r_max
 
-    SpeciesProfile = ut.particle.SpeciesProfileClass(
-        limits=[0, r_limit], width=r_limit / 2, dimension_number=2
-    )
+    kin_dict = {}
 
-    z_lim = r_limit * z_lim_fraction
+    snap_id = gc_utils.snapshot_name(snapshot)
+    kin_dict[snap_id] = {}
+    kin_dict[snap_id]["r_limit"] = r_limit
 
-    pro = SpeciesProfile.get_sum_profiles(
+    part = gc_utils.open_snapshot(snapshot, fire_dir, species=["all"])
+
+    kappa_dict = get_kappa_co(halt, part, main_halo_tid, sim, sim_dir, snapshot, r_limit)
+    kin_dict[snap_id].update(kappa_dict)
+
+    sigma_dict = get_v_sigma(halt, part, main_halo_tid, sim, sim_dir, snapshot, r_limit)
+    kin_dict[snap_id].update(sigma_dict)
+
+    make_images(
         part,
-        disk_ptypes,
-        "mass",
-        center_position=host_pos,
-        rotation=host_rot,
-        other_axis_distance_limits=[-z_lim, z_lim],
+        halt,
+        r_limit * 1.5,
+        0.1,
+        main_halo_tid,
+        sim,
+        sim_dir,
+        snapshot,
+        species=["star", "gas", "dark"],
+        weight_name="mass",
+        image_limits=[None, None],
     )
 
-    mass_dict = {}
+    del part
 
-    if "star" in disk_ptypes:
-        density_s_data = pro["star"]["density"]
-        density_s_avg = np.average(density_s_data)
-        density_s_std = np.std(density_s_data)
+    end_time = time.time()
+    print(snapshot, "time:", end_time - start_time)
 
-        mass_s_data = pro["star"]["sum"]
-        mass_s_avg = np.average(mass_s_data)
-        mass_s_std = np.std(mass_s_data)
+    return kin_dict
 
-        mass_dict["density_s_avg"] = density_s_avg
-        mass_dict["density_s_std"] = density_s_std
-        mass_dict["mass_s_avg"] = mass_s_avg
-        mass_dict["mass_s_std"] = mass_s_std
 
-    if "gas" in disk_ptypes:
-        density_g_data = pro["gas"]["density"]
-        density_g_avg = np.average(density_g_data)
-        density_g_std = np.std(density_g_data)
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-s", "--simulation", required=True, type=str, help="simulation name (e.g. m12i)")
+    parser.add_argument("-l", "--location", required=True, type=str, help="either local or katana")
+    parser.add_argument("-c", "--cores", required=False, type=int, help="number of cores to run process on")
+    parser.add_argument(
+        "-n",
+        "--snapshots",
+        required=False,
+        nargs="+",
+        type=int,
+        help="list of snapshots of interest, if None provided will default to all publicly available",
+    )
+    args = parser.parse_args()
 
-        mass_g_data = pro["gas"]["sum"]
-        mass_g_avg = np.average(mass_g_data)
-        mass_g_std = np.std(mass_g_data)
+    sim = args.simulation
+    location = args.location
 
-        mass_dict["density_g_avg"] = density_g_avg
-        mass_dict["density_g_std"] = density_g_std
-        mass_dict["mass_g_avg"] = mass_g_avg
-        mass_dict["mass_g_std"] = mass_g_std
+    if location == "local":
+        sim_dir = "../../simulations/"
 
-    if ("star" in disk_ptypes) and ("gas" in disk_ptypes):
-        density_sg_data = pro["baryon"]["density"]
-        density_sg_avg = np.average(density_sg_data)
-        density_sg_std = np.std(density_sg_data)
+    elif location == "katana":
+        sim_dir = "/srv/scratch/astro/z5114326/simulations/"
 
-        mass_sg_data = pro["baryon"]["sum"]
-        mass_sg_avg = np.average(mass_sg_data)
-        mass_sg_std = np.std(mass_sg_data)
+    else:
+        raise RuntimeError("Incorrect location provided. Must be local or katana.")
 
-        mass_dict["density_sg_avg"] = density_sg_avg
-        mass_dict["density_sg_std"] = density_sg_std
-        mass_dict["mass_sg_avg"] = mass_sg_avg
-        mass_dict["mass_sg_std"] = mass_sg_std
+    # potential_snaps = sim_dir + sim + "/potentials.json"
+    # with open(potential_snaps) as json_file:
+    #     pot_data = json.load(json_file)
 
-    return mass_dict
+    cores = args.cores
+    if cores is None:
+        # 2 cores is max to run with 64 GB RAM
+        # cores = mp.cpu_count()
+        cores = 2
+
+    file_path = sim_dir + sim + "/galaxy_kinematics.json"
+    if not os.path.exists(file_path):
+        # Step 2: Create it with an empty list
+        with open(file_path, "w") as f:
+            json.dump({}, f, indent=2)
+
+    fire_dir = sim_dir + sim + "/" + sim + "_res7100/"
+
+    print("Retrieving Halo Tree")
+    gc_utils.block_print()
+    halt = halo.io.IO.read_tree(simulation_directory=fire_dir, species="star")
+    gc_utils.enable_print()
+    print("Halo Tree Retrieved")
+
+    sim_codes = sim_dir + "simulation_codes.json"
+    with open(sim_codes) as sim_json:
+        sim_data = json.load(sim_json)
+    main_halo_tid = [sim_data[sim]["halo"]]
+
+    snap_lst = args.snapshots
+    if snap_lst is None:
+        snap_lst = constant_star_snap(halt, main_halo_tid, sim_dir)
+
+    print(snap_lst)
+
+    with mp.Pool(processes=cores, maxtasksperchild=1, initializer=init_worker, initargs=(halt,)) as pool:
+        results = pool.starmap(
+            compile_kinematics, [(main_halo_tid, sim, sim_dir, snapshot) for snapshot in snap_lst]
+        )
+
+    del halt
+
+    with open(file_path, "r+") as f:
+        data = json.load(f)
+
+        # combined_dict = {}
+    for result in results:
+        # combined_dict.update(result)
+        data.update(result)
+
+    # print(combined_dict)
+
+    with open(file_path, "w") as f:
+        json.dump(data, f, indent=2)

@@ -35,26 +35,54 @@ def make_potential(
     sim: str,
     snapshot: int,
     sim_dir: str,
-    symmetry: str = "a",  # needs to be a for orbit propagation
+    disk_limt: int = None,
+    # rmax_sel: int = 600,  # set as 2x virial radius
+    # rmax_ctr: int = 10,  # set as 0.05x virial radius (minimum 1)
+    # rmax_exp: int = 500,  # set as 1.5x virial radius
+    rmax_sel_frac: float = 2,  # set as 2x virial radius
+    rmax_ctr_frac: float = 0.05,  # set as 0.05x virial radius (minimum 1)
+    rmax_exp_frac: float = 1.5,  # set as 1.5x virial radius
+    symmetry: str = "a",  # needs to be "a" for orbit propagation
     subsample_factor: int = 1,
-    rmax_sel: int = 600,
-    rmax_ctr: int = 10,
-    rmax_exp: int = 500,
     save_coords: bool = True,
     save_plot: bool = True,
     print_plot: bool = False,
     compare_plot: bool = True,
     verbose: bool = False,
-    disk_limt: int = None,
 ):
     print(snapshot)
     start_time = time.time()
-    # define the physical units used in the code: the choice below corresponds to
-    # length scale = 1 kpc, velocity = 1 km/s, mass = 1 Msun
-    agama.setUnits(mass=1, length=1, velocity=1)
+
+    sim_codes = sim_dir + "simulation_codes.json"
+    with open(sim_codes) as sim_json:
+        sim_data = json.load(sim_json)
+    main_halo_tid = [sim_data[sim]["halo"]]
+
+    # get rmax_sel, rmax_ctr, rmax_exp
 
     # fire simulation location
     fire_dir = sim_dir + sim + "/" + sim + "_res7100/"
+
+    # block printing
+    gc_utils.block_print()
+    halt = halo.io.IO.read_tree(simulation_directory=fire_dir)
+    # enable printing
+    gc_utils.enable_print()
+
+    snap_halo_tid = gc_utils.get_halo_prog_at_snap(halt, main_halo_tid, snapshot)
+    halo_idx = np.where(halt["tid"] == snap_halo_tid)[0][0]
+    halo_radius = halt["radius"][halo_idx]
+
+    rmax_sel = halo_radius * rmax_sel_frac
+    rmax_ctr = halo_radius * rmax_ctr_frac
+    rmax_exp = halo_radius * rmax_exp_frac
+
+    if rmax_ctr < 1:
+        rmax_ctr = 1
+
+    # define the physical units used in the code: the choice below corresponds to
+    # length scale = 1 kpc, velocity = 1 km/s, mass = 1 Msun
+    agama.setUnits(mass=1, length=1, velocity=1)
 
     # particles of interest
     ptypes = ["gas", "star", "dark"]
@@ -88,11 +116,6 @@ def make_potential(
     halt = halo.io.IO.read_tree(simulation_directory=fire_dir)
     # enable printing
     gc_utils.enable_print()
-
-    sim_codes = sim_dir + "simulation_codes.json"
-    with open(sim_codes) as sim_json:
-        sim_data = json.load(sim_json)
-    main_halo_tid = [sim_data[sim]["halo"]]
 
     halt_center_snap_lst = sim_data[sim]["dm_center"]
     use_dm_center = snapshot in halt_center_snap_lst
@@ -353,14 +376,6 @@ def make_potential(
             plt.close()
 
         if compare_plot:
-            # block printing
-            gc_utils.block_print()
-
-            halt = halo.io.IO.read_tree(simulation_directory=fire_dir)
-
-            # enable printing
-            gc_utils.enable_print()
-
             compare_potentials(
                 pot_nbody,
                 part,

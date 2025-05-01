@@ -614,6 +614,7 @@ def make_images(
     fig_file = "snap_%d.png" % snapshot
     fig.savefig(save_path + fig_file)
 
+    plt.close(fig)
     # plt.show(block=False)
 
 
@@ -711,7 +712,7 @@ if __name__ == "__main__":
     if cores is None:
         # 2 cores is max to run with 64 GB RAM
         # cores = mp.cpu_count()
-        cores = 2
+        cores = 1
 
     file_path = sim_dir + sim + "/galaxy_kinematics.json"
     if not os.path.exists(file_path):

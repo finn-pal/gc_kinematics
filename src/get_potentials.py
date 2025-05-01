@@ -9,6 +9,9 @@ if __name__ == "__main__":
     parser.add_argument("-s", "--simulation", required=True, type=str, help="simulation name (e.g. m12i)")
     parser.add_argument("-c", "--cores", required=False, type=int, help="number of cores to run process on")
     parser.add_argument(
+        "-d", "--disk_limit", default=None, required=False, type=int, help="snapshot when disk formed"
+    )
+    parser.add_argument(
         "-n",
         "--snapshots",
         required=False,
@@ -20,6 +23,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
     sim = args.simulation
     snapshots = args.snapshots
+    disk_limit = args.disk_limit
+
+    print("Don't forget to add a disk limit")
 
     sim_dir = "../../simulations/"
     # data_dir = "data/"
@@ -40,6 +46,6 @@ if __name__ == "__main__":
         # Use pool.starmap to run make_potential for each snapshot in parallel
         # for snapshot in snapshots:
         #     print(snapshot)
-        pool.starmap(make_potential, [(sim, snapshot, sim_dir) for snapshot in snapshots])
+        pool.starmap(make_potential, [(sim, snapshot, sim_dir, disk_limit) for snapshot in snapshots])
 
         # the radial extent to which the potential are created needs to have a redshift dependence.

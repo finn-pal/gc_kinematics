@@ -48,6 +48,11 @@ def get_kinematics(
         vy = vel[:, 1]
         vz = vel[:, 2]
 
+        l_xyz = snap_data["l.xyz"][()]
+        l_mag = np.linalg.norm(l_xyz, axis=1)
+        l_z = l_xyz[:, 2]
+        inclination = np.degrees(np.arccos(l_z / l_mag))
+
         ek = np.array(snap_data["ek"])
 
         if len(gc_id_snap) is None:
@@ -59,6 +64,8 @@ def get_kinematics(
         jr = ioms[:, 0]
         jz = ioms[:, 1]
         jphi = ioms[:, 2]
+
+        j_cyl = np.column_stack((jr, jphi, jz))
 
         radii_pos = pot_nbody.Rperiapo(init_cond_lst)
         r_per = radii_pos[:, 0]
@@ -98,9 +105,8 @@ def get_kinematics(
             "r_apo": r_apo,
             "ep_agama": ep_agama,
             "et": et,
-            "jr": jr,
-            "jz": jz,
-            "jphi": jphi,
+            "j.cyl": j_cyl,
+            "inc": inclination,
             "ecc": eccentricity,
             "lz_norm": lz_norm,
             "et_norm": et_norm,

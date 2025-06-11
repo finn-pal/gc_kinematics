@@ -370,7 +370,8 @@ def make_potential(
     if save_plot or print_plot:
         if verbose:
             print("Making plots")
-        plot_potential(pot_nbody, sim, snapshot, save_dir, save_plot, print_plot)
+        plot_potential(pot_nbody, halt, main_halo_tid, sim, snapshot, save_dir, save_plot, print_plot)
+        relative_errors(pot_nbody, part, halt, sim, snapshot, sim_dir, save_dir, save_plot, print_plot)
 
         if not print_plot:
             plt.close()
@@ -400,38 +401,45 @@ def make_potential(
 
 def plot_potential(
     pot_nbody,
+    halt,
+    main_halo_tid: int,
     sim: str,
     snapshot: int = None,
     save_dir: str = None,
     save_plot: bool = False,
     print_plot: bool = True,
 ):
-    gridR = agama.nonuniformGrid(500, 0.01, 1000)
-    gridz = agama.symmetricGrid(500, 0.01, 1000)
+    max_rad = gc_utils.get_main_vir_rad_snap(halt, main_halo_tid, snapshot)
+    max_grid = 2 * int(max_rad)
+
+    gridR = agama.nonuniformGrid(500, 0.01, max_grid)
+    gridz = agama.symmetricGrid(500, 0.01, max_grid)
     gridR00 = np.column_stack((gridR, gridR * 0, gridR * 0))
     grid00z = np.column_stack((gridz * 0, gridz * 0, gridz))
 
-    xticks_density = [1e-2, 1e-1, 1e0, 1e1, 1e2, 1e3]
+    # xticks_density = [1e-2, 1e-1, 1e0, 1e1, 1e2, 1e3]
 
     fig, axs = plt.subplots(2, 2, figsize=(12, 8))
 
     axs[0, 0].loglog(gridR, pot_nbody.density(gridR00), label="Agama", color="blue")
-    axs[0, 0].set(xlim=[1e-2, 1e3], xticks=xticks_density)
+    # axs[0, 0].set(xlim=[1e-2, max_grid], xticks=xticks_density)
+    axs[0, 0].set(xlim=[1e-2, max_grid])
     axs[0, 0].set_xlabel("R (kpc)")
     axs[0, 0].set_ylabel(r"$\rho(R)$ at $z=0$ $[M_\odot/\mathsf{kpc}^3]$")
 
     axs[0, 1].loglog(gridz, pot_nbody.density(grid00z), label="Agama", color="blue")
-    axs[0, 1].set(xlim=[1e-2, 1e3], xticks=xticks_density[1:])
+    # axs[0, 1].set(xlim=[1e-2, max_grid], xticks=xticks_density[1:])
+    axs[0, 1].set(xlim=[1e-2, max_grid])
     axs[0, 1].set_xlabel("z (kpc)")
     axs[0, 1].set_ylabel(r"$\rho(z)$ $[M_\odot/\mathsf{kpc}^3]$")
 
     axs[1, 0].plot(gridR, pot_nbody.potential(gridR00) * 10**-5, label="Agama", color="blue")
-    axs[1, 0].set(xlim=[-50, 1e3])
+    axs[1, 0].set(xlim=[0, max_grid])
     axs[1, 0].set_xlabel("R (kpc)")
     axs[1, 0].set_ylabel("E$_{p}(R)$ at $z=0$ (10$^{5}$ km$^{2}$ s$^{-2}$)")
 
     axs[1, 1].plot(gridz, pot_nbody.potential(grid00z) * 10**-5, label="Agama", color="blue")
-    axs[1, 1].set(xlim=[-1e3, 1e3])
+    axs[1, 1].set(xlim=[-max_grid, max_grid])
     axs[1, 1].set_xlabel("z (kpc)")
     axs[1, 1].set_ylabel("E$_{p}(R)$ (10$^{5}$ km$^{2}$ s$^{-2}$)")
 
@@ -537,6 +545,31 @@ def compare_potentials(
         potential_lst = np.concatenate((potential_lst, potentials))
 
     potential_offset = np.average(potential_lst) - pot_nbody.potential(gridR00[-1])
+
+    ##########################################################################################
+
+    # for ptype in ptype_lst:
+    #     if (not is_main_host) or (use_dm_center):
+    #         dist = ut.particle.get_distances_wrt_center(
+    #             part,
+    #             species=[ptype],
+    #             center_position=halo_details["position"],
+    #             rotation=halo_details["rotation"],
+    #             coordinate_system="cartesian",
+    #             total_distance=True,
+    #         )
+
+    #     else:
+    #         dist = part[ptype].prop("host.distance.principal.total")
+
+    #     mask = dist <= pos_limit_width / 2
+
+    #     potentials = np.array(part[ptype]["potential"][mask])
+    #     potential_lst = np.concatenate((potential_lst, potentials))
+
+    # potential_offset = np.average(potential_lst) - pot_nbody.potential(gridR00[0])
+
+    ##########################################################################################
 
     r_position_list = np.array([])
     r_potential_list = np.array([])
@@ -692,3 +725,141 @@ def compare_potentials(
             f.write("# snapshot %d \n" % snapshot)
             f.write("# potential offset \n")
             np.savetxt(f, [potential_offset])
+
+
+def relative_errors(
+    pot_nbody,
+    part,
+    halt,
+    sim: str,
+    snapshot: int,
+    sim_dir: str = None,  # this shouldn't be None
+    save_dir: str = None,  # this shouldn't be None
+    save_plot: bool = False,
+    print_plot: bool = True,
+    save_offset: bool = True,
+):
+    ptype_lst = ["star", "gas", "dark"]
+
+    sim_codes = sim_dir + "simulation_codes.json"
+    with open(sim_codes) as sim_json:
+        sim_data = json.load(sim_json)
+    main_halo_tid = [sim_data[sim]["halo"]]
+
+    halt_center_snap_lst = sim_data[sim]["dm_center"]
+    use_dm_center = snapshot in halt_center_snap_lst
+
+    # check to see is the progentior of the host at z = 0 is the host at this snapshot
+    not_host_snap_lst = gc_utils.get_different_snap_lst(main_halo_tid, halt, sim, sim_dir)
+    is_main_host = snapshot not in not_host_snap_lst
+
+    if (not is_main_host) or (use_dm_center):
+        halo_tid = gc_utils.get_main_prog_at_snap(halt, main_halo_tid, snapshot)
+
+        if use_dm_center:
+            halo_details = gc_utils.get_dm_halo_details(part, halt, halo_tid, snapshot, True)
+        else:
+            halo_details = gc_utils.get_halo_details(part, halt, halo_tid, snapshot)
+
+    max_rad = gc_utils.get_main_vir_rad_snap(halt, main_halo_tid, snapshot)
+    r_max = int(max_rad)
+
+    pos_vect_lst = np.empty((0, 3))
+    pos_dist_lst = np.array([])
+    fire_pot_lst = np.array([])
+
+    for ptype in ptype_lst:
+        if (not is_main_host) or (use_dm_center):
+            pos_vect = ut.particle.get_distances_wrt_center(
+                part,
+                species=[ptype],
+                center_position=halo_details["position"],
+                rotation=halo_details["rotation"],
+                coordinate_system="cartesian",
+            )
+
+            pos_dist = ut.particle.get_distances_wrt_center(
+                part,
+                species=[ptype],
+                center_position=halo_details["position"],
+                rotation=halo_details["rotation"],
+                coordinate_system="cartesian",
+                total_distance=True,
+            )
+
+        else:
+            pos_vect = part[ptype].prop("host.distance.principal")
+            pos_dist = part[ptype].prop("host.distance.principal.total")
+
+        mask = pos_dist < r_max
+
+        pos_vect = pos_vect[mask]
+        pos_dist = pos_dist[mask]
+        potential = part[ptype]["potential"][mask]
+
+        pos_vect_lst = np.vstack([pos_vect_lst, pos_vect])
+        pos_dist_lst = np.concatenate([pos_dist_lst, pos_dist])
+        fire_pot_lst = np.concatenate([fire_pot_lst, potential])
+
+    agama_potentials = pot_nbody.potential(pos_vect_lst)
+    offset = np.mean(fire_pot_lst - agama_potentials)
+
+    # bin_size = 1
+    bin_num = 100
+    bin_edges = np.linspace(0, r_max, bin_num + 1)
+    bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+
+    bin_err_avg_arr = np.zeros(bin_num)
+    bin_err_std_arr = np.zeros(bin_num)
+    for i in range(bin_num):
+        in_bin = (pos_dist_lst >= bin_edges[i]) & (pos_dist_lst < bin_edges[i + 1])
+        fire_bin_pot = fire_pot_lst[in_bin] - offset
+        agama_bin_pot = agama_potentials[in_bin]
+
+        bin_err = np.abs(fire_bin_pot - agama_bin_pot) / np.abs(fire_bin_pot)
+        bin_err_avg = np.mean(bin_err)
+        bin_err_std = np.std(bin_err)
+
+        bin_err_avg_arr[i] = bin_err_avg
+        bin_err_std_arr[i] = bin_err_std
+
+    lower = bin_err_avg_arr - bin_err_std_arr
+    upper = bin_err_avg_arr + bin_err_std_arr
+
+    fig = plt.figure(figsize=(15, 10))
+
+    plt.plot(bin_centers, bin_err_avg_arr, c="b", label="Average Error")
+    plt.fill_between(bin_centers, lower, upper, color="b", alpha=0.3, label="Error Spread")
+
+    plt.plot([0, r_max], [0.05, 0.05], c="grey", ls="--", label="5% Relative Error")
+
+    plt.xlabel("Radius [kpc]")
+    plt.ylabel("Relative Error of Agama Potential")
+
+    plt.xlim([0, r_max])
+
+    y_max = np.min([1, 1.5 * np.max(upper)])
+    plt.ylim([0, y_max])
+
+    snap_id = gc_utils.snapshot_name(snapshot)
+    plt.title(snap_id + "\n" + "summed over all particles within r_max")
+    plt.legend(loc="upper left")
+
+    if print_plot:
+        plt.show()
+
+    if save_plot:
+        if save_dir is None:
+            print("No save directory provided, figure not saved")
+        else:
+            fig_file = "snap_%d_relative_error.png" % snapshot
+            fig.savefig(save_dir + fig_file)
+
+    if save_offset:
+        oname = "{0}_potential_offset_better.txt".format(save_dir)
+
+        with open(oname, "w") as f:
+            f.write("# sim " + sim + "\n")
+            f.write("# snapshot %d \n" % snapshot)
+            f.write("# potential offset \n")
+            np.savetxt(f, [offset])

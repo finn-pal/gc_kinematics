@@ -84,6 +84,13 @@ def get_kinematics(
         l_xyz = snap_data["l.xyz"][()]
         lz = l_xyz[:, 2]
 
+        # get max eigenvalue
+        tideig1 = snap_data["tideig_1"][()]
+        tideig2 = snap_data["tideig_2"][()]
+        tideig3 = snap_data["tideig_3"][()]
+
+        tideig_m = np.max(np.abs((tideig1, tideig2, tideig3)), axis=0)
+
         if len(et) == 1:
             # pot.Rcirc it didn't like handling arrays of 1
             et = et[0]
@@ -111,6 +118,7 @@ def get_kinematics(
             "lz_norm": lz_norm,
             "et_norm": et_norm,
             "bound_flag": bound_flag,
+            "tideig_m": tideig_m,
         }
 
         it_dict[it_id] = kin_dict

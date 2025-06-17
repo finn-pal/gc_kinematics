@@ -32,15 +32,15 @@ def get_kinematics(
 
         # UPDATE 18/06/2025 ######################
         # add survival flag to each gc in snapshot
-        fnl_snp_dat = proc_data[it_id]["snapshots"]["snap600"]
-        fnl_snp_gcid = fnl_snp_dat["gc_id"][()]
+        # fnl_snp_dat = proc_data[it_id]["snapshots"]["snap600"]
+        # fnl_snp_gcid = fnl_snp_dat["gc_id"][()]
 
-        surv_flag = []
-        for gcid in gc_id_snap:
-            if gcid in fnl_snp_gcid:
-                surv_flag.append(1)
-            else:
-                surv_flag.append(0)
+        # surv_flag = []
+        # for gcid in gc_id_snap:
+        #     if gcid in fnl_snp_gcid:
+        #         surv_flag.append(1)
+        #     else:
+        #         surv_flag.append(0)
         ##########################################
 
         # x = np.array(snap_data["x"])
@@ -131,7 +131,7 @@ def get_kinematics(
             "lz_norm": lz_norm,
             "et_norm": et_norm,
             "bound_flag": bound_flag,
-            "survive_flag": surv_flag,
+            # "survive_flag": surv_flag,
             # "tideig_m": tideig_m,
         }
 

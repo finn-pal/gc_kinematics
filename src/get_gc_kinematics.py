@@ -1,21 +1,22 @@
 import argparse
-import json
 import multiprocessing as mp
 
 import h5py
 import numpy as np
-from gc_utils import iteration_name, snapshot_name  # type: ignore
+import pandas as pd
+from gc_utils import snapshot_name  # type: ignore
 
 from tools.gc_kinematics import get_kinematics
 
 
-def add_kinematics_hdf5(simulation, it_lst: list[int], snap_lst: list[int], result_dict: dict, sim_dir: str):
+def add_kinematics_hdf5(simulation, snap_lst: list[int], result_dict: dict, sim_dir: str):
     proc_file = sim_dir + simulation + "/" + simulation + "_processed.hdf5"
     proc_data = h5py.File(proc_file, "a")  # open processed data file
     # proc_data.swmr_mode = True  # enable SWMR mode after opening the file
 
-    for it in it_lst:
-        it_id = iteration_name(it)
+    # for it in it_lst:
+    # it_id = iteration_name(it)
+    for it_id in proc_data.keys():
         if it_id in proc_data.keys():
             it_grouping = proc_data[it_id]
         else:
@@ -43,9 +44,10 @@ def add_kinematics_hdf5(simulation, it_lst: list[int], snap_lst: list[int], resu
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-s", "--simulation", required=True, type=str, help="simulation name (e.g. m12i)")
-    parser.add_argument("-a", "--iteration_low_limit", required=True, type=int, help="lower bound iteration")
-    parser.add_argument("-b", "--iteration_up_limit", required=True, type=int, help="upper bound iteration")
+    # parser.add_argument("-a", "--iteration_low_limit", required=True, type=int, help="lower bound iteration")
+    # parser.add_argument("-b", "--iteration_up_limit", required=True, type=int, help="upper bound iteration")
     parser.add_argument("-c", "--cores", required=False, type=int, help="number of cores to run process on")
+    parser.add_argument("-l", "--location", required=True, type=str, help="either local or katana")
     parser.add_argument(
         "-n",
         "--snapshots",
@@ -54,24 +56,56 @@ if __name__ == "__main__":
         type=int,
         help="list of snapshots of interest, if None provided will default to all publicly available",
     )
+    parser.add_argument("-p", "--snap_lim", required=False, type=int, help="Minimum snapshot to consider")
 
     args = parser.parse_args()
 
-    it_min = args.iteration_low_limit
-    it_max = args.iteration_up_limit
-    it_lst = np.linspace(it_min, it_max, it_max - it_min + 1, dtype=int)
+    location = args.location
+    # it_min = args.iteration_low_limit
+    # it_max = args.iteration_up_limit
+    # it_lst = np.linspace(it_min, it_max, it_max - it_min + 1, dtype=int)
 
     sim = args.simulation
 
-    sim_dir = "../../simulations/"
+    if location == "local":
+        sim_dir = "../../simulations/"
 
-    potential_snaps = sim_dir + sim + "/potentials.json"
-    with open(potential_snaps) as json_file:
-        pot_data = json.load(json_file)
+    elif location == "katana":
+        sim_dir = "/srv/scratch/astro/z5114326/simulations/"
+
+    elif location == "one_touch":
+        sim_dir = "/Volumes/One_Touch/simulations/"
+
+    elif location == "expansion":
+        sim_dir = "/Volumes/Expansion/simulations/"
+
+    else:
+        raise RuntimeError("Incorrect location provided. Must be local or katana.")
+
+    # potential_snaps = sim_dir + sim + "/potentials.json"
+    # with open(potential_snaps) as json_file:
+    #     pot_data = json.load(json_file)
+
+    public_snapshot_file = sim_dir + "snapshot_times_public.txt"
+    pub_data = pd.read_table(public_snapshot_file, comment="#", header=None, sep=r"\s+")
+    pub_data.columns = [
+        "index",
+        "scale_factor",
+        "redshift",
+        "time_Gyr",
+        "lookback_time_Gyr",
+        "time_width_Myr",
+    ]
+    pub_snaps = np.array(pub_data["index"], dtype=int)
+    snapshots = pub_snaps
 
     snap_lst = args.snapshots
     if snap_lst is None:
-        snap_lst = np.array(pot_data[sim], dtype=int)
+        snap_lst = snapshots
+
+    snap_lim = args.snap_lim
+    if snap_lim is not None:
+        snap_lst = snap_lst[snap_lst >= snap_lim]
 
     cores = args.cores
     if cores is None:
@@ -84,11 +118,13 @@ if __name__ == "__main__":
 
     with mp.Manager() as manager:
         shared_dict = manager.dict()  # Shared dictionary across processes
-        args = [(sim, it_lst, snap, sim_dir, shared_dict) for snap in snap_lst]
+        # args = [(sim, it_lst, snap, sim_dir, shared_dict) for snap in snap_lst]
+        args = [(sim, snap, sim_dir, shared_dict) for snap in snap_lst]
 
         with mp.Pool(processes=cores, maxtasksperchild=1) as pool:
             pool.starmap(get_kinematics, args, chunksize=1)
 
         result_dict = dict(shared_dict)
 
-    add_kinematics_hdf5(sim, it_lst, snap_lst, result_dict, sim_dir)
+    # add_kinematics_hdf5(sim, it_lst, snap_lst, result_dict, sim_dir)
+    add_kinematics_hdf5(sim, snap_lst, result_dict, sim_dir)

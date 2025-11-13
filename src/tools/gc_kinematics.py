@@ -6,7 +6,7 @@ from gc_utils import iteration_name, snapshot_name  # type: ignore
 
 def get_kinematics(
     sim: str,
-    it_lst: list[int],
+    # it_lst: list[int],
     snapshot: int,
     sim_dir: str,
     data_dict: dict = {},
@@ -24,8 +24,9 @@ def get_kinematics(
     af = agama.ActionFinder(pot_nbody, interp=False)
 
     it_dict = {}
-    for it in it_lst:
-        it_id = iteration_name(it)
+    # for it in it_lst:
+    for it_id in proc_data.keys():
+        # it_id = iteration_name(it)
 
         snap_data = proc_data[it_id]["snapshots"][snap_id]
         gc_id_snap = snap_data["gc_id"][()]
@@ -137,6 +138,8 @@ def get_kinematics(
 
         it_dict[it_id] = kin_dict
     data_dict[snap_id] = it_dict
+
+    # print(snapshot, "success")
 
     proc_data.close()
 

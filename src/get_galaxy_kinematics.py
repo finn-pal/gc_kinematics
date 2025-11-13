@@ -12,12 +12,12 @@ import pandas as pd
 import utilities as ut
 from matplotlib import colors
 
-_global_halt = None
+# _global_halt = None
 
 
-def init_worker(halt_obj):
-    global _global_halt
-    _global_halt = halt_obj
+# def init_worker(halt_obj):
+#     global _global_halt
+#     _global_halt = halt_obj
 
 
 def constant_star_snap(halt, main_halo_tid: int, sim_dir: str = None, get_public_snap: bool = True):
@@ -50,8 +50,8 @@ def constant_star_snap(halt, main_halo_tid: int, sim_dir: str = None, get_public
     return snap_lst
 
 
-def get_halo_center(part, halt, main_halo_tid, sim, sim_dir, snapshot):
-    not_host_snap_lst = gc_utils.get_different_snap_lst(main_halo_tid, halt, sim, sim_dir)
+def get_halo_center(part, halt, main_halo_tid, sim, sim_dir, snapshot, snap_lim=46):
+    not_host_snap_lst = gc_utils.get_different_snap_lst(main_halo_tid, halt, sim, sim_dir, snap_lim)
 
     # is the MW progenitor is the main host at this snapshot
     is_main_host = snapshot not in not_host_snap_lst
@@ -92,10 +92,11 @@ def get_kappa_co(
     r_limit: float,
     disk_ptypes: list[str] = ["star", "gas"],
     log_t_max: float = 4.5,
+    snap_lim=46,
 ):
     # Combination of Correa 2017, Thob 2019, Jiminez 2023
 
-    host_return_dict = get_halo_center(part, halt, main_halo_tid, sim, sim_dir, snapshot)
+    host_return_dict = get_halo_center(part, halt, main_halo_tid, sim, sim_dir, snapshot, snap_lim)
 
     # create dict
     kappa_co_dict = {}
@@ -290,12 +291,13 @@ def get_v_sigma(
     log_t_max: float = 4.5,
     bin_size: float = 0.2,  # kpc
     bin_num: int = None,
+    snap_lim: int = 46,
 ):
     # We define Vrot as the maximum of the rotation curve
     # Sigma as the as the median of the velocity dispersion profile
     # Look at Kareen El-Badry 2018 Gas Kinematics, morphology
 
-    host_return_dict = get_halo_center(part, halt, main_halo_tid, sim, sim_dir, snapshot)
+    host_return_dict = get_halo_center(part, halt, main_halo_tid, sim, sim_dir, snapshot, snap_lim)
     if (bin_size is not None) and (bin_num is not None):
         raise RuntimeError("Only select one method for bin creation")
 
@@ -505,10 +507,11 @@ def make_images(
     species=["star", "gas", "dark"],
     weight_name="mass",
     image_limits=[None, None],
+    snap_lim: int = 46,
 ):
     dimen_label = {0: "x", 1: "y", 2: "z"}
 
-    host_return_dict = get_halo_center(part, halt, main_halo_tid, sim, sim_dir, snapshot)
+    host_return_dict = get_halo_center(part, halt, main_halo_tid, sim, sim_dir, snapshot, snap_lim)
 
     # get distance limits for plot
     position_limits = [[-distance_max, distance_max] for _ in range(2)]
@@ -618,12 +621,13 @@ def make_images(
     # plt.show(block=False)
 
 
-def compile_kinematics(main_halo_tid: int, sim: str, sim_dir: str, snapshot: int):
+# def compile_kinematics(main_halo_tid: int, sim: str, sim_dir: str, snapshot: int):
+def compile_kinematics(main_halo_tid: int, sim: str, sim_dir: str, snapshot: int, halt, snap_lim: int = 46):
     start_time = time.time()
     fire_dir = sim_dir + sim + "/" + sim + "_res7100/"
 
-    global _global_halt
-    halt = _global_halt  # safely read it
+    # global _global_halt
+    # halt = _global_halt  # safely read it
 
     use_stellar_radius = True
     stellar_radius_multiplier = 2
@@ -647,27 +651,29 @@ def compile_kinematics(main_halo_tid: int, sim: str, sim_dir: str, snapshot: int
     kin_dict[snap_id] = {}
     kin_dict[snap_id]["r_limit"] = r_limit
 
-    part = gc_utils.open_snapshot(snapshot, fire_dir, species=["all"])
+    # part = gc_utils.open_snapshot(snapshot, fire_dir, species=["all"])
+    part = gc_utils.open_snapshot(snapshot, fire_dir, species=["star", "gas"])
 
-    kappa_dict = get_kappa_co(halt, part, main_halo_tid, sim, sim_dir, snapshot, r_limit)
+    kappa_dict = get_kappa_co(halt, part, main_halo_tid, sim, sim_dir, snapshot, r_limit, snap_lim=snap_lim)
     kin_dict[snap_id].update(kappa_dict)
 
-    sigma_dict = get_v_sigma(halt, part, main_halo_tid, sim, sim_dir, snapshot, r_limit)
+    sigma_dict = get_v_sigma(halt, part, main_halo_tid, sim, sim_dir, snapshot, r_limit, snap_lim=snap_lim)
     kin_dict[snap_id].update(sigma_dict)
 
-    make_images(
-        part,
-        halt,
-        r_limit * 1.5,
-        0.1,
-        main_halo_tid,
-        sim,
-        sim_dir,
-        snapshot,
-        species=["star", "gas", "dark"],
-        weight_name="mass",
-        image_limits=[None, None],
-    )
+    # make_images(
+    #     part,
+    #     halt,
+    #     r_limit * 1.5,
+    #     0.1,
+    #     main_halo_tid,
+    #     sim,
+    #     sim_dir,
+    #     snapshot,
+    #     species=["star", "gas"],
+    #     weight_name="mass",
+    #     image_limits=[None, None],
+    #     snap_lim
+    # )
 
     del part
 
@@ -690,6 +696,7 @@ if __name__ == "__main__":
         type=int,
         help="list of snapshots of interest, if None provided will default to all publicly available",
     )
+    parser.add_argument("-p", "--snap_lim", required=False, type=int, help="Minimum snapshot to consider")
     args = parser.parse_args()
 
     sim = args.simulation
@@ -701,8 +708,16 @@ if __name__ == "__main__":
     elif location == "katana":
         sim_dir = "/srv/scratch/astro/z5114326/simulations/"
 
+    elif location == "one_touch":
+        sim_dir = "/Volumes/One_Touch/simulations/"
+
+    elif location == "my_passport":
+        sim_dir = "/Volumes/My_Passport_for_Mac/simulations/"
+
     else:
         raise RuntimeError("Incorrect location provided. Must be local or katana.")
+
+    # image creation uses a lot of memory
 
     # potential_snaps = sim_dir + sim + "/potentials.json"
     # with open(potential_snaps) as json_file:
@@ -737,12 +752,23 @@ if __name__ == "__main__":
     if snap_lst is None:
         snap_lst = constant_star_snap(halt, main_halo_tid, sim_dir)
 
+    snap_lim = args.snap_lim
+    if snap_lim is not None:
+        snap_lst = snap_lst[snap_lst >= snap_lim]
+    else:
+        snap_lim = 20
+
     print(snap_lst)
 
-    with mp.Pool(processes=cores, maxtasksperchild=1, initializer=init_worker, initargs=(halt,)) as pool:
-        results = pool.starmap(
-            compile_kinematics, [(main_halo_tid, sim, sim_dir, snapshot) for snapshot in snap_lst]
-        )
+    # with mp.Pool(processes=cores, maxtasksperchild=1, initializer=init_worker, initargs=(halt,)) as pool:
+    #     results = pool.starmap(
+    #         compile_kinematics, [(main_halo_tid, sim, sim_dir, snapshot) for snapshot in snap_lst]
+    #     )
+
+    results = []
+    for snapshot in snap_lst:
+        result = compile_kinematics(main_halo_tid, sim, sim_dir, snapshot, halt, snap_lim)
+        results.append(result)
 
     del halt
 

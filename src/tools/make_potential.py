@@ -32,6 +32,7 @@ import utilities as ut
 
 
 def make_potential(
+    halt,
     sim: str,
     snapshot: int,
     sim_dir: str,
@@ -63,11 +64,11 @@ def make_potential(
     # fire simulation location
     fire_dir = sim_dir + sim + "/" + sim + "_res7100/"
 
-    # block printing
-    gc_utils.block_print()
-    halt = halo.io.IO.read_tree(simulation_directory=fire_dir)
-    # enable printing
-    gc_utils.enable_print()
+    # # block printing
+    # gc_utils.block_print()
+    # halt = halo.io.IO.read_tree(simulation_directory=fire_dir)
+    # # enable printing
+    # gc_utils.enable_print()
 
     snap_halo_tid = gc_utils.get_halo_prog_at_snap(halt, main_halo_tid, snapshot)
     halo_idx = np.where(halt["tid"] == snap_halo_tid)[0][0]
@@ -300,9 +301,9 @@ def make_potential(
     p_dark = agama.Potential(
         type="multipole",
         particles=(pos_pa_dark, m_dark),
-        lmax=2,
-        mmax=0,
-        gridSizeR=20,
+        lmax=4,  # changed from 2
+        # mmax=0, # commented out
+        gridSizeR=20,  # was 20
         symmetry=symmetry,
         rmin=0.1,
         rmax=rmax_exp,
@@ -321,10 +322,10 @@ def make_potential(
         p_disk = agama.Potential(
             type="cylspline",
             particles=(pos_pa_bar, m_bar),
-            mmax=0,
+            mmax=4,  # changed from 0
             symmetry=symmetry,
-            gridsizer=20,
-            gridsizez=20,
+            gridsizer=20,  # was 20
+            gridsizez=20,  # was 20
             rmin=0.1,
             rmax=rmax_exp,
         )
@@ -335,10 +336,10 @@ def make_potential(
             p_disk = agama.Potential(
                 type="cylspline",
                 particles=(pos_pa_bar, m_bar),
-                mmax=0,
+                mmax=4,  # changed from 0
                 symmetry=symmetry,
-                gridsizer=20,
-                gridsizez=20,
+                gridsizer=20,  # was 20
+                gridsizez=20,  # was 20
                 rmin=0.1,
                 rmax=rmax_exp,
             )
@@ -348,9 +349,9 @@ def make_potential(
             p_disk = agama.Potential(
                 type="multipole",
                 particles=(pos_pa_bar, m_bar),
-                lmax=2,
-                mmax=0,
-                gridSizeR=20,
+                lmax=4,  # changed from 2
+                # mmax=0, # commented out
+                gridSizeR=20,  # was 20
                 symmetry=symmetry,
                 rmin=0.1,
                 rmax=rmax_exp,
